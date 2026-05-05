@@ -1,0 +1,37 @@
+`bat`: a `cat` clone with wings.
+%
+`eza`: a modern replacement for `ls`.
+%
+`dust`: like `du` but more intuitive.
+%
+`duf`: a better `df` alternative.
+%
+`fd`: simple, fast and user-friendly alternative to `find`.
+%
+`rg` (ripgrep): an extremely fast alternative to `grep` that respects your gitignore.
+%
+`xh`: friendly and fast tool for sending HTTP requests.
+%
+`fzf`: a general purpose command-line fuzzy finder.
+%
+`jq`: command-line JSON processor.
+%
+Still using `man`? Try using `tldr` (tealdeer) first!
+%
+`hyperfine`: a command-line benchmarking tool.
+%
+`yazi` is a blazing fast terminal file manager!
+%
+Try using `jj` (jujutsu) instead of `git`.
+%
+`hexyl` is the new `hexdump -C`!
+%
+Try using `zmx` when you would reach for `tmux`!
+%
+Reach for `difft` (difftastic) when using `diff` interactively.
+%
+Don't use `ps` - use `procs`!
+%
+`mtr`: combines the functionality of `traceroute` and `ping` into one tool.
+%
+Instead of `dig`, use `doggo`: a DNS client for humans.

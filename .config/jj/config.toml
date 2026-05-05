@@ -1,0 +1,75 @@
+[user]
+name = "Thiago Trannin"
+email = "51510921+thinety@users.noreply.github.com"
+
+[snapshot]
+auto-track = "none()"
+
+[ui]
+default-command = "-h"
+diff-formatter = "difft"
+
+[aliases]
+l = ["log", "-T", "log_oneline(self)"]
+lv = ["log", "-T", "log_verbose(self)"]
+
+[template-aliases]
+"log_oneline(commit)" = """
+if(commit.root(),
+  format_root_commit(commit),
+  label(
+    separate(" ",
+      if(commit.current_working_copy(), "working_copy"),
+      if(commit.immutable(), "immutable", "mutable"),
+      if(commit.conflict(), "conflicted"),
+    ),
+    separate(" ",
+      format_short_change_id_with_change_offset(commit),
+      surround("(", ")", separate(" ",
+        commit.bookmarks(),
+        commit.tags().map(|tag| "tag:" ++ tag),
+      )),
+      commit.working_copies(),
+      format_short_commit_id(commit.commit_id()),
+      format_commit_labels(commit),
+      if(config("ui.show-cryptographic-signatures").as_boolean(),
+        format_short_cryptographic_signature(commit.signature())
+      ),
+      if(commit.empty(), empty_commit_marker),
+      if(commit.description(),
+        commit.description().first_line(),
+        label(if(commit.empty(), "empty"), description_placeholder),
+      ),
+    ) ++ "\n",
+  )
+)
+"""
+
+"log_verbose(commit)" = """
+concat(
+  "Commit ID: " ++ commit.commit_id() ++ "\n",
+  "Change ID: " ++ commit.change_id() ++ "\n",
+  surround("Bookmarks: ", "\n", separate(" ",
+    commit.local_bookmarks(),
+    commit.remote_bookmarks(),
+  )),
+  surround("Tags     : ", "\n", commit.tags()),
+  "Author   : " ++ format_detailed_signature(commit.author()) ++ "\n",
+  "Committer: " ++ format_detailed_signature(commit.committer())  ++ "\n",
+  if(config("ui.show-cryptographic-signatures").as_boolean(),
+    concat(
+      "Signature: ",
+      format_detailed_cryptographic_signature(commit.signature()),
+      "\n",
+    )
+  ),
+  "\n",
+  indent("    ",
+    if(commit.description(),
+      commit.description().trim_end(),
+      label(if(commit.empty(), "empty"), description_placeholder)
+    ) ++ "\n"
+  ),
+  "\n",
+)
+"""

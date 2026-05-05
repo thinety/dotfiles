@@ -1,0 +1,8 @@
+[user]
+    email = 51510921+thinety@users.noreply.github.com
+    name = Thiago Trannin
+[init]
+    defaultBranch = main
+[alias]
+    logga  = log --graph --exclude refs/jj/* --all --oneline
+    loggav = log --graph --exclude refs/jj/* --all --format=fuller

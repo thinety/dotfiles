@@ -1,0 +1,25 @@
+theme = TokyoNight Night
+
+font-family = Fira Code
+font-feature = -liga
+font-feature = -diga
+font-feature = -calt
+font-feature = -clig
+font-size = 11
+
+window-padding-x = 0
+window-padding-y = 0
+
+keybind = ctrl+a>c=new_tab
+keybind = ctrl+a>n=next_tab
+keybind = ctrl+a>p=previous_tab
+keybind = ctrl+a>s=new_split:down
+keybind = ctrl+a>v=new_split:right
+keybind = ctrl+a>h=goto_split:left
+keybind = ctrl+a>j=goto_split:down
+keybind = ctrl+a>k=goto_split:up
+keybind = ctrl+a>l=goto_split:right
+keybind = ctrl+a>q=close_surface
+
+shell-integration = none
+shell-integration-features = no-path

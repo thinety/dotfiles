@@ -1,0 +1,17 @@
+#!/usr/bin/bash
+
+# the `cc` crate recognizes zig as clang-like and tries to pass a
+# `--target=` flag. we want to set it manually, so we move the first
+# argument (which should be the `--target=` set by us) to the end,
+# overriding the flag from the `cc` crate
+
+case $1 in
+    --target=*)
+        TARGET=$1
+        shift
+        exec zig cc $@ $TARGET
+    ;;
+    *)
+        exec zig cc $@
+    ;;
+esac
