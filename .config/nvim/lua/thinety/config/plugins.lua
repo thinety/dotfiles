@@ -106,7 +106,11 @@ local plugins = {
       snacks.setup({
         bigfile = {},
         input = {},
-        picker = {},
+        picker = {
+          win = {
+            preview = { wo = { list = true } },
+          },
+        },
       })
 
       local keymaps = {
