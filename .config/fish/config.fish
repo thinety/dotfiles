@@ -3,7 +3,6 @@ if status is-login
         "$HOME/.local/bin" \
         "$HOME/.cargo/bin" \
         "$HOME/.go/bin" \
-        "$HOME/.cabal/bin" \
         "$HOME/.ghcup/bin" \
         $PATH
 
