@@ -1,0 +1,62 @@
+#!/usr/bin/bash
+
+mkdir -p "${XDG_RUNTIME_DIR}/zmx-pi"
+
+cmd=(
+    bwrap
+
+    --die-with-parent
+    --unshare-all
+    --unshare-user
+    --disable-userns
+
+    --ro-bind /usr/bin /usr/bin
+    --ro-bind /usr/lib /usr/lib
+    --ro-bind /usr/share /usr/share
+    --ro-bind /usr/include /usr/include
+    --symlink usr/lib /lib64
+    --symlink usr/bin /bin
+
+    --dev /dev
+    --proc /proc
+    --tmpfs /run/user/1000
+    --tmpfs /tmp
+    # bwrap creates a process with PID=1 to reap child processes
+    # prevent the sandbox from reading `cmdline` or `environ` from this process
+    --tmpfs /proc/1
+    --remount-ro /proc/1
+
+    # maybe use a veth pair instead of sharing the network namespace?
+    --share-net
+    --ro-bind /etc/resolv.conf /etc/resolv.conf
+    --ro-bind /etc/ca-certificates /etc/ca-certificates
+    --ro-bind /etc/ssl /etc/ssl
+    --ro-bind "${HOME}/.local/pi/passwd" /etc/passwd
+    --ro-bind "${HOME}/.local/pi/group" /etc/group
+
+    --uid 1000
+    --gid 1000
+    --hostname sandbox
+
+    --clearenv
+    --setenv HOME /home/pi
+    --setenv PATH /home/pi/.local/bin:/home/pi/.npm/bin:/usr/bin:/usr/lib/rustup/bin
+    --setenv TERM "$TERM"
+    --setenv XDG_RUNTIME_DIR /run/user/1000
+
+    --bind "${HOME}/.local/pi/home" /home/pi
+    --ro-bind "${HOME}/.rustup" /home/pi/.rustup
+
+    --ro-bind "${HOME}/.local/bin/zmx" /home/pi/.local/bin/zmx
+    --bind "${XDG_RUNTIME_DIR}/zmx-pi" /run/user/1000/zmx
+
+    --bind "$(pwd)" /workdir
+    --chdir /workdir
+
+    --remount-ro /
+
+    "${1:-pi}"
+    "${@:2}"
+)
+
+exec "${cmd[@]}"
