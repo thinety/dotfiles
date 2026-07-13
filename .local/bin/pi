@@ -2,6 +2,19 @@
 
 mkdir -p "${XDG_RUNTIME_DIR}/zmx-pi"
 
+workdir_flags=(
+    --bind "$(pwd)" /workdir
+    --chdir /workdir
+)
+case "$1" in
+    --no-workdir)
+        workdir_flags=(
+            --chdir /home/pi
+        )
+        shift
+        ;;
+esac
+
 cmd=(
     bwrap
 
@@ -50,8 +63,7 @@ cmd=(
     --ro-bind "${HOME}/.local/bin/zmx" /home/pi/.local/bin/zmx
     --bind "${XDG_RUNTIME_DIR}/zmx-pi" /run/user/1000/zmx
 
-    --bind "$(pwd)" /workdir
-    --chdir /workdir
+    "${workdir_flags[@]}"
 
     --remount-ro /
 
