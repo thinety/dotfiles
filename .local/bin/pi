@@ -1,19 +1,39 @@
 #!/usr/bin/bash
 
-mkdir -p "${XDG_RUNTIME_DIR}/zmx-pi"
+no_workdir=
+workdir_name=
+while true; do
+    case "${1}" in
+        --no-workdir)
+            no_workdir=1
+            shift
+            ;;
+        --workdir-name=*)
+            workdir_name="${1#*=}"
+            shift
+            ;;
+        *)
+            break;
+            ;;
+    esac
+done
 
-workdir_flags=(
-    --bind "$(pwd)" /workdir
-    --chdir /workdir
-)
-case "$1" in
-    --no-workdir)
-        workdir_flags=(
-            --chdir /home/pi
-        )
-        shift
-        ;;
-esac
+if [ -n "${no_workdir}" ]; then
+    workdir_flags=(
+        --chdir /home/pi
+    )
+else
+    cwd="$(pwd)"
+
+    if [ -z "${workdir_name}" ]; then
+        workdir_name="$(basename ${cwd})"
+    fi
+
+    workdir_flags=(
+        --bind "${cwd}" "/workdir/${workdir_name}"
+        --chdir "/workdir/${workdir_name}"
+    )
+fi
 
 cmd=(
     bwrap
@@ -54,7 +74,7 @@ cmd=(
     --clearenv
     --setenv HOME /home/pi
     --setenv PATH /home/pi/.local/bin:/home/pi/.npm/bin:/usr/bin:/usr/lib/rustup/bin
-    --setenv TERM "$TERM"
+    --setenv TERM "${TERM}"
     --setenv XDG_RUNTIME_DIR /run/user/1000
 
     --bind "${HOME}/.local/pi/home" /home/pi
@@ -70,5 +90,7 @@ cmd=(
     "${1:-pi}"
     "${@:2}"
 )
+
+mkdir -p "${XDG_RUNTIME_DIR}/zmx-pi"
 
 exec "${cmd[@]}"
