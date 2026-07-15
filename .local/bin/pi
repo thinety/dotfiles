@@ -1,11 +1,16 @@
 #!/usr/bin/bash
 
 no_workdir=
+bare_workdir=
 workdir_name=
 while true; do
     case "${1}" in
         --no-workdir)
             no_workdir=1
+            shift
+            ;;
+        --bare-workdir)
+            bare_workdir=1
             shift
             ;;
         --workdir-name=*)
@@ -21,6 +26,11 @@ done
 if [ -n "${no_workdir}" ]; then
     workdir_flags=(
         --chdir /home/pi
+    )
+elif [ -n "${bare_workdir}" ]; then
+    workdir_flags=(
+        --bind "$(pwd)" "/workdir"
+        --chdir "/workdir"
     )
 else
     cwd="$(pwd)"
