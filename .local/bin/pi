@@ -84,6 +84,7 @@ cmd=(
     --clearenv
     --setenv HOME /home/pi
     --setenv PATH /home/pi/.local/bin:/home/pi/.npm/bin:/usr/bin:/usr/lib/rustup/bin
+    --setenv EDITOR "${EDITOR}"
     --setenv TERM "${TERM}"
     --setenv XDG_RUNTIME_DIR /run/user/1000
 
