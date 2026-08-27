@@ -10,3 +10,5 @@ if status is-login
 
     set -gx EDITOR nvim
 end
+
+fish_vi_key_bindings
