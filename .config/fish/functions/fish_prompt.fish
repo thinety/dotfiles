@@ -19,7 +19,7 @@ function fish_prompt
     echo -n (string replace --regex "^$HOME" '~' "$PWD")
 
     set_color normal
-    set -q ZMX_SESSION; and echo -n " [$ZMX_SESSION]"
+    set -q ZMY_SESSION; and echo -n " [$ZMY_SESSION]"
     echo
 
     set_color brblack

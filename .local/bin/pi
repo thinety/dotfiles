@@ -91,8 +91,8 @@ cmd=(
     --bind "${HOME}/.local/pi/home" /home/pi
     --ro-bind "${HOME}/.rustup" /home/pi/.rustup
 
-    --ro-bind "${HOME}/.local/bin/zmx" /home/pi/.local/bin/zmx
-    --bind "${XDG_RUNTIME_DIR}/zmx-pi" /run/user/1000/zmx
+    --ro-bind "${HOME}/.local/bin/zmy" /home/pi/.local/bin/zmy
+    --bind "${XDG_RUNTIME_DIR}/zmy-pi" /run/user/1000/zmy
 
     "${workdir_flags[@]}"
 
@@ -102,6 +102,6 @@ cmd=(
     "${@:2}"
 )
 
-mkdir -p "${XDG_RUNTIME_DIR}/zmx-pi"
+mkdir -p "${XDG_RUNTIME_DIR}/zmy-pi"
 
 exec "${cmd[@]}"
