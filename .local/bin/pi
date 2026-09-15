@@ -89,7 +89,10 @@ cmd=(
     --setenv XDG_RUNTIME_DIR /run/user/1000
 
     --bind "${HOME}/.local/pi/home" /home/pi
+
     --ro-bind "${HOME}/.rustup" /home/pi/.rustup
+    --ro-bind "${HOME}/.cargo/config.toml" /home/pi/.cargo/config.toml
+    --setenv SCCACHE_SERVER_PORT 4227
 
     --ro-bind "${HOME}/.local/bin/zmy" /home/pi/.local/bin/zmy
     --bind "${XDG_RUNTIME_DIR}/zmy-pi" /run/user/1000/zmy

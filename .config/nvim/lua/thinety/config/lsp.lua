@@ -50,11 +50,6 @@ vim.lsp.config("rust_analyzer", {
       check = {
         command = "clippy",
       },
-      hover = {
-        links = {
-          enable = false,
-        },
-      },
     },
   },
 })
