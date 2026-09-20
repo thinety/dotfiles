@@ -29,8 +29,8 @@ if [ -n "${no_workdir}" ]; then
     )
 elif [ -n "${bare_workdir}" ]; then
     workdir_flags=(
-        --bind "$(pwd)" "/workdir"
-        --chdir "/workdir"
+        --bind "$(pwd)" /home/pi/workdir
+        --chdir /home/pi/workdir
     )
 else
     cwd="$(pwd)"
@@ -40,18 +40,98 @@ else
     fi
 
     workdir_flags=(
-        --bind "${cwd}" "/workdir/${workdir_name}"
-        --chdir "/workdir/${workdir_name}"
+        --bind "${cwd}" "/home/pi/workdir/${workdir_name}"
+        --chdir "/home/pi/workdir/${workdir_name}"
     )
 fi
 
-cmd=(
+# some default masked paths (taken from podman's source)
+# https://github.com/podman-container-tools/container-libs/blob/fbbd878d826f4265ba5a8e28d496aa903814fe7a/common/pkg/config/default.go
+masked_paths=(
+    /proc/acpi
+    /proc/kcore
+    /proc/keys
+    /proc/latency_stats
+    /proc/sched_debug
+    /proc/scsi
+    /proc/timer_list
+    /proc/timer_stats
+    /proc/interrupts
+    # hide also the kernel cmdline for good measure
+    /proc/cmdline
+    # bwrap creates a process with PID=1 to reap child processes
+    # prevent the sandbox from reading `cmdline` or `environ` from this process
+    /proc/1
+)
+masked_paths_flags=()
+for path in "${masked_paths[@]}"; do
+    if [ -f $path ]; then
+        masked_paths_flags+=(
+            --dev-bind /dev/null $path
+            --remount-ro $path
+        )
+    elif [ -d $path ]; then
+        masked_paths_flags+=(
+            --tmpfs $path
+            --remount-ro $path
+        )
+    fi
+done
+
+exec {etc_passwd_fd}<<EOF
+pi:x:1000:1000::/home/pi:/usr/bin/bash
+nobody:x:65534:65534:Kernel Overflow User:/:/usr/bin/nologin
+EOF
+
+exec {etc_group_fd}<<EOF
+pi:x:1000:
+nobody:x:65534:
+EOF
+
+exec {etc_hosts_fd}<<EOF
+127.0.0.1       localhost
+::1             localhost
+169.254.17.1    host.internal
+fe80::17:1      host.internal
+EOF
+
+exec {etc_resolv_conf_fd}<<EOF
+nameserver 169.254.17.2
+EOF
+
+pasta=(
+    pasta
+    --quiet
+    --config-net
+    -t none
+    -u none
+    -T none
+    -U none
+    --map-host-loopback none
+    --map-guest-addr 169.254.17.1
+    --map-guest-addr fe80::17:1
+    --dns-forward 169.254.17.2
+)
+exec {json_status_fd}> >(
+    "${pasta[@]}" $(jq -n 'input | ."child-pid"')
+)
+
+mkdir -p "${XDG_RUNTIME_DIR}/zmy-pi"
+
+bwrap=(
     bwrap
 
     --die-with-parent
     --unshare-all
     --unshare-user
     --disable-userns
+
+    --dev /dev
+    --proc /proc
+    --tmpfs /run/user/1000
+    --tmpfs /tmp
+
+    "${masked_paths_flags[@]}"
 
     --ro-bind /usr/bin /usr/bin
     --ro-bind /usr/lib /usr/lib
@@ -60,22 +140,18 @@ cmd=(
     --symlink usr/lib /lib64
     --symlink usr/bin /bin
 
-    --dev /dev
-    --proc /proc
-    --tmpfs /run/user/1000
-    --tmpfs /tmp
-    # bwrap creates a process with PID=1 to reap child processes
-    # prevent the sandbox from reading `cmdline` or `environ` from this process
-    --tmpfs /proc/1
-    --remount-ro /proc/1
-
-    # maybe use a veth pair instead of sharing the network namespace?
-    --share-net
-    --ro-bind /etc/resolv.conf /etc/resolv.conf
+    --file "${etc_passwd_fd}" /etc/passwd
+    --file "${etc_group_fd}" /etc/group
+    --file "${etc_hosts_fd}" /etc/hosts
+    --file "${etc_resolv_conf_fd}" /etc/resolv.conf
     --ro-bind /etc/ca-certificates /etc/ca-certificates
     --ro-bind /etc/ssl /etc/ssl
-    --ro-bind "${HOME}/.local/pi/passwd" /etc/passwd
-    --ro-bind "${HOME}/.local/pi/group" /etc/group
+
+    --bind "${HOME}/.local/pi" /home/pi
+
+    --remount-ro /
+
+    --json-status-fd "${json_status_fd}"
 
     --uid 1000
     --gid 1000
@@ -88,23 +164,15 @@ cmd=(
     --setenv TERM "${TERM}"
     --setenv XDG_RUNTIME_DIR /run/user/1000
 
-    --bind "${HOME}/.local/pi/home" /home/pi
-
     --ro-bind "${HOME}/.rustup" /home/pi/.rustup
     --ro-bind "${HOME}/.cargo/config.toml" /home/pi/.cargo/config.toml
-    --setenv SCCACHE_SERVER_PORT 4227
 
     --ro-bind "${HOME}/.local/bin/zmy" /home/pi/.local/bin/zmy
     --bind "${XDG_RUNTIME_DIR}/zmy-pi" /run/user/1000/zmy
 
     "${workdir_flags[@]}"
 
-    --remount-ro /
-
     "${1:-pi}"
     "${@:2}"
 )
-
-mkdir -p "${XDG_RUNTIME_DIR}/zmy-pi"
-
-exec "${cmd[@]}"
+exec "${bwrap[@]}"
