@@ -1,178 +1,268 @@
-#!/usr/bin/bash
+#!/usr/bin/python
 
-no_workdir=
-bare_workdir=
-workdir_name=
-while true; do
-    case "${1}" in
-        --no-workdir)
-            no_workdir=1
-            shift
-            ;;
-        --bare-workdir)
-            bare_workdir=1
-            shift
-            ;;
-        --workdir-name=*)
-            workdir_name="${1#*=}"
-            shift
-            ;;
-        *)
-            break;
-            ;;
-    esac
-done
+import argparse
+import os
+import pathlib
+import subprocess
+import tempfile
 
-if [ -n "${no_workdir}" ]; then
-    workdir_flags=(
-        --chdir /home/pi
-    )
-elif [ -n "${bare_workdir}" ]; then
-    workdir_flags=(
-        --bind "$(pwd)" /home/pi/workdir
-        --chdir /home/pi/workdir
-    )
-else
-    cwd="$(pwd)"
 
-    if [ -z "${workdir_name}" ]; then
-        workdir_name="$(basename ${cwd})"
-    fi
+def tmpfile(content: str) -> int:
+    file, path = tempfile.mkstemp()
+    os.unlink(path)
+    os.write(file, content.encode())
+    os.lseek(file, 0, os.SEEK_SET)
+    return file
 
-    workdir_flags=(
-        --bind "${cwd}" "/home/pi/workdir/${workdir_name}"
-        --chdir "/home/pi/workdir/${workdir_name}"
-    )
-fi
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--no-workdir", action="store_true")
+parser.add_argument("--bare-workdir", action="store_true")
+parser.add_argument("--workdir-name")
+(args, unknown_args) = parser.parse_known_args()
+
+masked_paths_flags = []
 # some default masked paths (taken from podman's source)
 # https://github.com/podman-container-tools/container-libs/blob/fbbd878d826f4265ba5a8e28d496aa903814fe7a/common/pkg/config/default.go
-masked_paths=(
-    /proc/acpi
-    /proc/kcore
-    /proc/keys
-    /proc/latency_stats
-    /proc/sched_debug
-    /proc/scsi
-    /proc/timer_list
-    /proc/timer_stats
-    /proc/interrupts
+for path in [
+    "/proc/acpi",
+    "/proc/kcore",
+    "/proc/keys",
+    "/proc/latency_stats",
+    "/proc/sched_debug",
+    "/proc/scsi",
+    "/proc/timer_list",
+    "/proc/timer_stats",
+    "/proc/interrupts",
     # hide also the kernel cmdline for good measure
-    /proc/cmdline
+    "/proc/cmdline",
     # bwrap creates a process with PID=1 to reap child processes
     # prevent the sandbox from reading `cmdline` or `environ` from this process
-    /proc/1
-)
-masked_paths_flags=()
-for path in "${masked_paths[@]}"; do
-    if [ -f $path ]; then
-        masked_paths_flags+=(
-            --dev-bind /dev/null $path
-            --remount-ro $path
+    "/proc/1",
+]:
+    path_obj = pathlib.Path(path)
+    if path_obj.is_file():
+        masked_paths_flags.extend(
+            (
+                *["--dev-bind", "/dev/null", path],
+                *["--remount-ro", path],
+            )
         )
-    elif [ -d $path ]; then
-        masked_paths_flags+=(
-            --tmpfs $path
-            --remount-ro $path
+    elif path_obj.is_dir():
+        masked_paths_flags.extend(
+            [
+                *["--tmpfs", path],
+                *["--remount-ro", path],
+            ]
         )
-    fi
-done
 
-exec {etc_passwd_fd}<<EOF
-pi:x:1000:1000::/home/pi:/usr/bin/bash
-nobody:x:65534:65534:Kernel Overflow User:/:/usr/bin/nologin
-EOF
+uid = os.getuid()
+gid = os.getgid()
+home = os.path.expanduser("~")
+cwd = os.getcwd()
+editor = os.environ.get("EDITOR")
+assert editor is not None
+term = os.environ.get("TERM")
+assert term is not None
+rundir = os.environ.get("XDG_RUNTIME_DIR")
+assert rundir is not None
 
-exec {etc_group_fd}<<EOF
-pi:x:1000:
+pi_user = "pi"
+pi_group = "pi"
+pi_hostname = "sandbox"
+pi_uid = 1000
+pi_gid = 1000
+pi_hostaddr_ipv4 = "169.254.17.1"
+pi_hostaddr_ipv6 = "fe80::17:1"
+pi_dns = "169.254.17.2"
+pi_home = os.path.join("/home", pi_user)
+pi_rundir = os.path.join("/run/user", str(pi_uid))
+
+etc_passwd_fd = tmpfile(f"""\
+{pi_user}:x:{pi_uid}:{pi_gid}::{pi_home}:/usr/bin/bash
+nobody:x:65534:65534::/:/usr/bin/nologin
+""")
+
+etc_group_fd = tmpfile(f"""\
+{pi_group}:x:{pi_gid}:
 nobody:x:65534:
-EOF
+""")
 
-exec {etc_hosts_fd}<<EOF
-127.0.0.1       localhost
-::1             localhost
-169.254.17.1    host.internal
-fe80::17:1      host.internal
-EOF
+etc_hosts_fd = tmpfile(f"""\
+127.0.0.1           localhost
+::1                 localhost
+{pi_hostaddr_ipv4}  host.internal
+{pi_hostaddr_ipv6}  host.internal
+""")
 
-exec {etc_resolv_conf_fd}<<EOF
-nameserver 169.254.17.2
-EOF
+etc_resolv_conf_fd = tmpfile(f"""\
+nameserver {pi_dns}
+""")
 
-pasta=(
-    pasta
-    --quiet
-    --config-net
-    -t none
-    -u none
-    -T none
-    -U none
-    --map-host-loopback none
-    --map-guest-addr 169.254.17.1
-    --map-guest-addr fe80::17:1
-    --dns-forward 169.254.17.2
-)
-exec {json_status_fd}> >(
-    "${pasta[@]}" $(jq -n 'input | ."child-pid"')
-)
+if args.no_workdir:
+    workdir_flags = [
+        *["--chdir", pi_home],
+    ]
+elif args.bare_workdir:
+    workdir = os.path.join(pi_home, "workdir")
+    workdir_flags = [
+        *["--bind", cwd, workdir],
+        *["--chdir", workdir],
+    ]
+else:
+    if args.workdir_name:
+        workdir = os.path.join(pi_home, "workdir", args.workdir_name)
+    else:
+        workdir = os.path.join(pi_home, "workdir", os.path.basename(cwd))
+    workdir_flags = [
+        *["--bind", cwd, workdir],
+        *["--chdir", workdir],
+    ]
 
-mkdir -p "${XDG_RUNTIME_DIR}/zmy-pi"
+os.makedirs(os.path.join(rundir, "zmy-pi"), exist_ok=True)
 
-bwrap=(
-    bwrap
 
-    --die-with-parent
-    --unshare-all
-    --unshare-user
-    --disable-userns
+unshare_block = os.pipe()
+namespace_block = os.pipe()
 
-    --dev /dev
-    --proc /proc
-    --tmpfs /run/user/1000
-    --tmpfs /tmp
+pid = os.getpid()
 
-    "${masked_paths_flags[@]}"
+if os.fork() == 0:
+    os.close(unshare_block[1])
+    os.close(namespace_block[0])
 
-    --ro-bind /usr/bin /usr/bin
-    --ro-bind /usr/lib /usr/lib
-    --ro-bind /usr/share /usr/share
-    --ro-bind /usr/include /usr/include
-    --symlink usr/lib /lib64
-    --symlink usr/bin /bin
+    os.read(unshare_block[0], 1)
 
-    --file "${etc_passwd_fd}" /etc/passwd
-    --file "${etc_group_fd}" /etc/group
-    --file "${etc_hosts_fd}" /etc/hosts
-    --file "${etc_resolv_conf_fd}" /etc/resolv.conf
-    --ro-bind /etc/ca-certificates /etc/ca-certificates
-    --ro-bind /etc/ssl /etc/ssl
+    # we do also a single map in the subuid/subgid range in order
+    # for `newgidmap` not to write "deny" to `/proc/$pid/setgroups`
+    subprocess.run(
+        ["newuidmap", str(pid), "0", str(uid), "1", str(uid), "100000", "1"],
+        check=True,
+    )
+    subprocess.run(
+        ["newgidmap", str(pid), "0", str(gid), "1", str(gid), "100000", "1"],
+        check=True,
+    )
 
-    --bind "${HOME}/.local/pi" /home/pi
+    os.close(namespace_block[1])
 
-    --remount-ro /
+    subprocess.run(
+        [
+            "pasta",
+            "--quiet",
+            "--config-net",
+            *["-t", "none"],
+            *["-u", "none"],
+            *["-T", "none"],
+            *["-U", "none"],
+            *["--map-host-loopback", "none"],
+            *["--map-guest-addr", pi_hostaddr_ipv4],
+            *["--map-guest-addr", pi_hostaddr_ipv6],
+            *["--dns-forward", pi_dns],
+            str(pid),
+        ],
+        check=False,
+    )
 
-    --json-status-fd "${json_status_fd}"
+else:
+    os.close(unshare_block[0])
+    os.close(namespace_block[1])
 
-    --uid 1000
-    --gid 1000
-    --hostname sandbox
+    os.unshare(os.CLONE_NEWUSER | os.CLONE_NEWNET)
 
-    --clearenv
-    --setenv HOME /home/pi
-    --setenv PATH /home/pi/.local/bin:/home/pi/.npm/bin:/usr/bin:/usr/lib/rustup/bin
-    --setenv EDITOR "${EDITOR}"
-    --setenv TERM "${TERM}"
-    --setenv XDG_RUNTIME_DIR /run/user/1000
+    os.close(unshare_block[1])
 
-    --ro-bind "${HOME}/.rustup" /home/pi/.rustup
-    --ro-bind "${HOME}/.cargo/config.toml" /home/pi/.cargo/config.toml
+    os.read(namespace_block[0], 1)
 
-    --ro-bind "${HOME}/.local/bin/zmy" /home/pi/.local/bin/zmy
-    --bind "${XDG_RUNTIME_DIR}/zmy-pi" /run/user/1000/zmy
+    os.write(os.open("/proc/sys/net/ipv4/ping_group_range", os.O_WRONLY), b"0 0")
 
-    "${workdir_flags[@]}"
+    os.setgroups([0])
 
-    "${1:-pi}"
-    "${@:2}"
-)
-exec "${bwrap[@]}"
+    os.set_inheritable(etc_passwd_fd, True)
+    os.set_inheritable(etc_group_fd, True)
+    os.set_inheritable(etc_hosts_fd, True)
+    os.set_inheritable(etc_resolv_conf_fd, True)
+
+    # call bwrap
+    os.execvp(
+        "bwrap",
+        [
+            "bwrap",
+            #
+            "--die-with-parent",
+            "--unshare-all",
+            "--unshare-user",
+            "--disable-userns",
+            "--share-net",
+            #
+            *["--dev", "/dev"],
+            *["--proc", "/proc"],
+            *["--tmpfs", pi_rundir],
+            *["--tmpfs", "/tmp"],
+            #
+            *masked_paths_flags,
+            #
+            *["--ro-bind", "/usr/bin", "/usr/bin"],
+            *["--ro-bind", "/usr/lib", "/usr/lib"],
+            *["--ro-bind", "/usr/share", "/usr/share"],
+            *["--ro-bind", "/usr/include", "/usr/include"],
+            *["--symlink", "usr/lib", "/lib64"],
+            *["--symlink", "usr/bin", "/bin"],
+            #
+            *["--file", str(etc_passwd_fd), "/etc/passwd"],
+            *["--file", str(etc_group_fd), "/etc/group"],
+            *["--file", str(etc_hosts_fd), "/etc/hosts"],
+            *["--file", str(etc_resolv_conf_fd), "/etc/resolv.conf"],
+            *["--ro-bind", "/etc/ca-certificates", "/etc/ca-certificates"],
+            *["--ro-bind", "/etc/ssl", "/etc/ssl"],
+            #
+            *["--bind", os.path.join(home, ".local/pi"), pi_home],
+            #
+            *["--remount-ro", "/"],
+            #
+            *["--cap-drop", "ALL"],
+            *["--uid", str(pi_uid)],
+            *["--gid", str(pi_gid)],
+            *["--hostname", pi_hostname],
+            #
+            "--clearenv",
+            *["--setenv", "HOME", pi_home],
+            *[
+                "--setenv",
+                "PATH",
+                ":".join(
+                    [
+                        os.path.join(pi_home, ".local/bin"),
+                        os.path.join(pi_home, ".npm/bin"),
+                        "/usr/bin",
+                        "/usr/lib/rustup/bin",
+                    ]
+                ),
+            ],
+            *["--setenv", "EDITOR", editor],
+            *["--setenv", "TERM", term],
+            *["--setenv", "XDG_RUNTIME_DIR", pi_rundir],
+            #
+            *[
+                "--ro-bind",
+                os.path.join(home, ".rustup"),
+                os.path.join(pi_home, ".rustup"),
+            ],
+            *[
+                "--ro-bind",
+                os.path.join(home, ".cargo/config.toml"),
+                os.path.join(pi_home, ".cargo/config.toml"),
+            ],
+            #
+            *[
+                "--ro-bind",
+                os.path.join(home, ".local/bin/zmy"),
+                os.path.join(pi_home, ".local/bin/zmy"),
+            ],
+            *["--bind", os.path.join(rundir, "zmy-pi"), os.path.join(pi_rundir, "zmy")],
+            #
+            *workdir_flags,
+            #
+            *(unknown_args if len(unknown_args) > 0 else ["pi"]),
+        ],
+    )
