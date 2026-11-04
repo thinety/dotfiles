@@ -161,6 +161,7 @@ vim.lsp.enable({
   "hls",
   "zls",
   "clangd",
+  "ocamllsp",
   "ty",
   "ruff",
   "lua_ls",
